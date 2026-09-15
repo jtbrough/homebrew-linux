@@ -1104,45 +1104,6 @@ ohai "Downloading and installing Homebrew..."
 
   execute "${HOMEBREW_PREFIX}/bin/brew" "update" "--force" "--quiet"
 
-  if [[ -n "${HOMEBREW_ON_LINUX-}" && "${HOMEBREW_PREFIX}" != "/home/linuxbrew/.linuxbrew" ]]
-  then
-    portable_ruby_vendor_dir="${HOMEBREW_REPOSITORY}/Library/Homebrew/vendor/portable-ruby"
-    if [[ -d "${portable_ruby_vendor_dir}" ]]
-    then
-      cat << 'EOFPATCH' > "${portable_ruby_vendor_dir}/patch_prefix.rb"
-module Kernel
-  class << self
-    alias_method :opt_homebrew_orig_require, :require
-  end
-
-  alias_method :opt_homebrew_orig_require, :require
-
-  def require(path)
-    res = opt_homebrew_orig_require(path)
-    if (path == "install" || path.to_s.end_with?("/install.rb")) && defined?(Homebrew::Install)
-      Homebrew::Install.singleton_class.define_method(:check_prefix) do
-        return unless defined?(OS) && OS.respond_to?(:mac?) && OS.mac?
-      end
-    end
-    res
-  end
-end
-EOFPATCH
-      for ruby_bin in "${portable_ruby_vendor_dir}"/*/bin/ruby
-      do
-        if [[ -f "${ruby_bin}" && ! -L "${ruby_bin}" && ! -f "${ruby_bin}.real" ]]
-        then
-          mv "${ruby_bin}" "${ruby_bin}.real"
-          cat << 'EOFRUBY' > "${ruby_bin}"
-#!/bin/bash
-exec "${0%/*}/ruby.real" "-r${0%/*}/../../patch_prefix.rb" "$@"
-EOFRUBY
-          chmod +x "${ruby_bin}"
-        fi
-      done
-    fi
-  fi
-
   if [[ -n "${PATH_WARN-}" ]]
   then
     warn "${HOMEBREW_PREFIX}/bin is not in your PATH.

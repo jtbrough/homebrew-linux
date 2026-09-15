@@ -9,7 +9,7 @@ This repository provides Homebrew's upstream `install.sh` with a patch that adds
 - **Rootless mode**: `~/.brew` installs with zero sudo required; not in Homebrew's test matrix, but works reliably for standard packages
 - **Prefix length validation**: Enforces ≤26 byte limit (Homebrew bottle ELF relocation constraint)
 
-**Status**: Homebrew 7.0.2+ officially supports custom prefixes ≤26 bytes. This installer enables that support with user-friendly prefix selection. Works on Homebrew 7.0.1+ (uses a temporary compatibility bridge for 7.0.1).
+**Status**: Requires Homebrew 7.0.2+. Custom prefix support shipped in 7.0.2; this installer provides the interactive UI.
 
 ## Quick Start
 
