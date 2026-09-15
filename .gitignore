@@ -1,0 +1,17 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor & IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test logs and temporary artifacts
+*.log
+logs/
+.tmp/
+tmp/
+*.tar.gz

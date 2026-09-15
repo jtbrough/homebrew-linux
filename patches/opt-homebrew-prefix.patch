@@ -1,0 +1,242 @@
+--- patches/install.sh.orig	2026-09-13 10:04:59.414687271 -0600
++++ install.sh	2026-09-13 18:30:15.641190865 -0600
+@@ -89,8 +89,14 @@
+ 
+ usage() {
+   cat <<EOS
+-Homebrew Installer
++Homebrew Installer (Linux Multi-Prefix Edition)
+ Usage: [NONINTERACTIVE=1] [CI=1] install.sh [options]
++    --opt            Install to /opt/homebrew (default: system-wide, 13 bytes, requires 1-time sudo)
++    --user           Install to ~/.brew (rootless: user-space, ~15-20 bytes, NO sudo required)
++    --rootless       Alias for --user
++    --legacy         Install to /home/linuxbrew/.linuxbrew (legacy default, 26 bytes)
++    --prefix=<path>  Install to custom path (maximum 26 bytes)
++    -p <path>        Alias for --prefix
+     -h, --help       Display this message.
+     NONINTERACTIVE   Install without prompting for user input
+     CI               Install in CI mode (e.g. do not prompt for user input)
+@@ -98,10 +104,31 @@
+   exit "${1:-0}"
+ }
+ 
++CHOSEN_PREFIX=""
+ while [[ $# -gt 0 ]]
+ do
+   case "$1" in
+     -h | --help) usage ;;
++    --opt)
++      CHOSEN_PREFIX="/opt/homebrew"
++      shift
++      ;;
++    --user | --rootless)
++      CHOSEN_PREFIX="${HOME}/.brew"
++      shift
++      ;;
++    --legacy)
++      CHOSEN_PREFIX="/home/linuxbrew/.linuxbrew"
++      shift
++      ;;
++    --prefix=*)
++      CHOSEN_PREFIX="${1#*=}"
++      shift
++      ;;
++    --prefix | -p)
++      CHOSEN_PREFIX="$2"
++      shift 2
++      ;;
+     *)
+       warn "Unrecognized option: '$1'"
+       usage 1
+@@ -175,8 +202,70 @@
+ else
+   UNAME_MACHINE="$(uname -m)"
+ 
+-  # On Linux, this script installs to /home/linuxbrew/.linuxbrew only
+-  HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
++  if [[ -z "${CHOSEN_PREFIX}" && -n "${HOMEBREW_PREFIX:-}" ]]
++  then
++    CHOSEN_PREFIX="${HOMEBREW_PREFIX}"
++  fi
++
++  if [[ -z "${CHOSEN_PREFIX}" ]]
++  then
++    if [[ -z "${NONINTERACTIVE-}" && -t 0 ]]
++    then
++      echo
++      echo "${tty_bold}Select installation prefix for Homebrew on Linux:${tty_reset}"
++      echo
++      echo "  ${tty_bold}[1] /opt/homebrew${tty_reset} (Default / macOS Parity)"
++      echo "      • Type: System-wide (13 bytes)"
++      echo "      • Setup: One-time sudo for initial folder creation, then 100% unprivileged"
++      echo
++      echo "  ${tty_bold}[2] ~/.brew${tty_reset} (Rootless / User-Space)"
++      echo "      • Type: Single-user (~15-20 bytes, in your home directory)"
++      echo "      • Setup: Never requires sudo (even during installation)"
++      echo "      • Ideal for: Non-root users, HPC, rootless containers, atomic OS (bootc)"
++      echo
++      echo "  ${tty_bold}[3] /home/linuxbrew/.linuxbrew${tty_reset} (Legacy Default)"
++      echo "      • Type: System-wide (26 bytes)"
++      echo "      • Setup: One-time sudo for initial folder creation, then 100% unprivileged"
++      echo
++      echo "  ${tty_bold}[4] Custom path...${tty_reset} (≤ 26 bytes)"
++      echo
++      echo "${tty_underline}Note${tty_reset}: In ALL options, running 'brew' NEVER requires sudo after installation."
++      echo
++      printf "Enter choice [1-4] (default: 1): "
++      read -r menu_choice
++      case "${menu_choice}" in
++        2) CHOSEN_PREFIX="${HOME}/.brew" ;;
++        3) CHOSEN_PREFIX="/home/linuxbrew/.linuxbrew" ;;
++        4)
++          printf "Enter custom prefix path: "
++          read -r custom_p
++          CHOSEN_PREFIX="${custom_p}"
++          ;;
++        1 | "") CHOSEN_PREFIX="/opt/homebrew" ;;
++        *)
++          abort "Invalid selection: '${menu_choice}'"
++          ;;
++      esac
++    else
++      CHOSEN_PREFIX="/opt/homebrew"
++    fi
++  fi
++
++  # Expand ~ to $HOME if given
++  CHOSEN_PREFIX="${CHOSEN_PREFIX/#\~/${HOME}}"
++
++  # Validate prefix length on Linux (Homebrew bottle relocation limit is 26 bytes)
++  if [[ ${#CHOSEN_PREFIX} -gt 26 ]]
++  then
++    abort "$(
++      cat <<EOABORT
++Prefix '${CHOSEN_PREFIX}' (${#CHOSEN_PREFIX} bytes) exceeds Homebrew Linux bottle relocation limit (26 bytes).
++Please choose a path with 26 characters or fewer (e.g. /opt/homebrew, ~/.brew).
++EOABORT
++    )"
++  fi
++
++  HOMEBREW_PREFIX="${CHOSEN_PREFIX}"
+   HOMEBREW_REPOSITORY="${HOMEBREW_PREFIX}/Homebrew"
+   HOMEBREW_CACHE="${HOME}/.cache/Homebrew"
+ 
+@@ -292,7 +381,7 @@
+ 
+ execute_sudo() {
+   local -a args=("$@")
+-  if [[ "${EUID:-${UID}}" != "0" ]] && have_sudo_access
++  if [[ "${EUID:-${UID}}" != "0" ]] && ! can_write_prefix && have_sudo_access
+   then
+     if [[ -n "${SUDO_ASKPASS-}" ]]
+     then
+@@ -380,6 +469,21 @@
+   [[ -e "$1" ]] && ! [[ -r "$1" && -w "$1" && -x "$1" ]]
+ }
+ 
++can_write_prefix() {
++  if [[ -e "${HOMEBREW_PREFIX}" ]]
++  then
++    [[ -w "${HOMEBREW_PREFIX}" ]]
++  else
++    local parent
++    parent="$(dirname "${HOMEBREW_PREFIX}")"
++    while [[ ! -d "${parent}" && "${parent}" != "/" && "${parent}" != "." ]]
++    do
++      parent="$(dirname "${parent}")"
++    done
++    [[ -w "${parent}" ]]
++  fi
++}
++
+ get_owner() {
+   "${STAT_PRINTF[@]}" "%u" "$1"
+ }
+@@ -511,28 +615,24 @@
+ 
+ ####################################################################### script
+ 
+-# shellcheck disable=SC2016
+-ohai 'Checking for `sudo` access (which may request your password)...'
+-
+ if [[ -n "${HOMEBREW_ON_MACOS-}" ]]
+ then
++  # shellcheck disable=SC2016
++  ohai 'Checking for `sudo` access (which may request your password)...'
+   [[ "${EUID:-${UID}}" == "0" ]] || have_sudo_access
+-elif ! [[ -w "${HOMEBREW_PREFIX}" ]] &&
+-     ! [[ -w "/home/linuxbrew" ]] &&
+-     ! [[ -w "/home" ]] &&
+-     ! have_sudo_access
++elif ! can_write_prefix
+ then
+-  abort "$(
+-    cat <<EOABORT
+-Insufficient permissions to install Homebrew to "${HOMEBREW_PREFIX}" (the default prefix).
+-
+-Alternative (unsupported) installation methods are available at:
+-https://docs.brew.sh/Installation#alternative-installs
+-
+-Please note this will require most formula to build from source, a buggy, slow and energy-inefficient experience.
+-We will close any issues without response for these unsupported configurations.
++  # shellcheck disable=SC2016
++  ohai 'Checking for `sudo` access (which may request your password)...'
++  if ! have_sudo_access
++  then
++    abort "$(
++      cat <<EOABORT
++Insufficient permissions to install Homebrew to "${HOMEBREW_PREFIX}".
++Please run with sudo privileges or choose a user-writable prefix (such as ~/.brew with --user).
+ EOABORT
+-  )"
++    )"
++  fi
+ fi
+ HOMEBREW_CORE="${HOMEBREW_REPOSITORY}/Library/Taps/homebrew/homebrew-core"
+ 
+@@ -1004,6 +1104,45 @@
+ 
+   execute "${HOMEBREW_PREFIX}/bin/brew" "update" "--force" "--quiet"
+ 
++  if [[ -n "${HOMEBREW_ON_LINUX-}" && "${HOMEBREW_PREFIX}" != "/home/linuxbrew/.linuxbrew" ]]
++  then
++    portable_ruby_vendor_dir="${HOMEBREW_REPOSITORY}/Library/Homebrew/vendor/portable-ruby"
++    if [[ -d "${portable_ruby_vendor_dir}" ]]
++    then
++      cat << 'EOFPATCH' > "${portable_ruby_vendor_dir}/patch_prefix.rb"
++module Kernel
++  class << self
++    alias_method :opt_homebrew_orig_require, :require
++  end
++
++  alias_method :opt_homebrew_orig_require, :require
++
++  def require(path)
++    res = opt_homebrew_orig_require(path)
++    if (path == "install" || path.to_s.end_with?("/install.rb")) && defined?(Homebrew::Install)
++      Homebrew::Install.singleton_class.define_method(:check_prefix) do
++        return unless defined?(OS) && OS.respond_to?(:mac?) && OS.mac?
++      end
++    end
++    res
++  end
++end
++EOFPATCH
++      for ruby_bin in "${portable_ruby_vendor_dir}"/*/bin/ruby
++      do
++        if [[ -f "${ruby_bin}" && ! -L "${ruby_bin}" && ! -f "${ruby_bin}.real" ]]
++        then
++          mv "${ruby_bin}" "${ruby_bin}.real"
++          cat << 'EOFRUBY' > "${ruby_bin}"
++#!/bin/bash
++exec "${0%/*}/ruby.real" "-r${0%/*}/../../patch_prefix.rb" "$@"
++EOFRUBY
++          chmod +x "${ruby_bin}"
++        fi
++      done
++    fi
++  fi
++
+   if [[ -n "${PATH_WARN-}" ]]
+   then
+     warn "${HOMEBREW_PREFIX}/bin is not in your PATH.
