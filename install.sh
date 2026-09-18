@@ -104,6 +104,10 @@ EOS
   exit "${1:-0}"
 }
 
+# Clear any existing Homebrew environment variables to prevent inherited state
+# from overriding prefix selection or corrupting repository locations.
+unset HOMEBREW_PREFIX HOMEBREW_CELLAR HOMEBREW_REPOSITORY
+
 CHOSEN_PREFIX=""
 while [[ $# -gt 0 ]]
 do
@@ -201,11 +205,6 @@ then
   INSTALL=("/usr/bin/install" -d -o "root" -g "wheel" -m "0755")
 else
   UNAME_MACHINE="$(uname -m)"
-
-  if [[ -z "${CHOSEN_PREFIX}" && -n "${HOMEBREW_PREFIX:-}" ]]
-  then
-    CHOSEN_PREFIX="${HOMEBREW_PREFIX}"
-  fi
 
   if [[ -z "${CHOSEN_PREFIX}" ]]
   then

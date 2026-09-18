@@ -1,5 +1,5 @@
---- patches/install.sh.orig	2026-09-13 10:04:59.414687271 -0600
-+++ install.sh	2026-09-15 13:56:46.151044347 -0600
+--- patches/install.sh.orig	2026-09-13 10:04:59
++++ install.sh	2026-09-17 22:45:10
 @@ -89,8 +89,14 @@
  
  usage() {
@@ -16,10 +16,14 @@
      -h, --help       Display this message.
      NONINTERACTIVE   Install without prompting for user input
      CI               Install in CI mode (e.g. do not prompt for user input)
-@@ -98,10 +104,31 @@
+@@ -98,10 +104,35 @@
    exit "${1:-0}"
  }
  
++# Clear any existing Homebrew environment variables to prevent inherited state
++# from overriding prefix selection or corrupting repository locations.
++unset HOMEBREW_PREFIX HOMEBREW_CELLAR HOMEBREW_REPOSITORY
++
 +CHOSEN_PREFIX=""
  while [[ $# -gt 0 ]]
  do
@@ -48,17 +52,12 @@
      *)
        warn "Unrecognized option: '$1'"
        usage 1
-@@ -175,8 +202,70 @@
+@@ -175,8 +206,65 @@
  else
    UNAME_MACHINE="$(uname -m)"
  
 -  # On Linux, this script installs to /home/linuxbrew/.linuxbrew only
 -  HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
-+  if [[ -z "${CHOSEN_PREFIX}" && -n "${HOMEBREW_PREFIX:-}" ]]
-+  then
-+    CHOSEN_PREFIX="${HOMEBREW_PREFIX}"
-+  fi
-+
 +  if [[ -z "${CHOSEN_PREFIX}" ]]
 +  then
 +    if [[ -z "${NONINTERACTIVE-}" && -t 0 ]]
@@ -121,7 +120,7 @@
    HOMEBREW_REPOSITORY="${HOMEBREW_PREFIX}/Homebrew"
    HOMEBREW_CACHE="${HOME}/.cache/Homebrew"
  
-@@ -292,7 +381,7 @@
+@@ -292,7 +380,7 @@
  
  execute_sudo() {
    local -a args=("$@")
@@ -130,7 +129,7 @@
    then
      if [[ -n "${SUDO_ASKPASS-}" ]]
      then
-@@ -380,6 +469,21 @@
+@@ -380,6 +468,21 @@
    [[ -e "$1" ]] && ! [[ -r "$1" && -w "$1" && -x "$1" ]]
  }
  
@@ -152,7 +151,7 @@
  get_owner() {
    "${STAT_PRINTF[@]}" "%u" "$1"
  }
-@@ -511,28 +615,24 @@
+@@ -511,28 +614,24 @@
  
  ####################################################################### script
  
