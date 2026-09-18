@@ -1,4 +1,4 @@
-# Homebrew-on-Linux Multi-Prefix Installer
+# Homebrew on Linux Multi-Prefix Installer
 
 **Homebrew's official Linux installer with interactive prefix selection.**
 
@@ -23,8 +23,6 @@ Interactive menu lets you choose `/opt/homebrew`, `~/.brew`, `/home/linuxbrew/.l
 
 Homebrew's installer with prefix selection added. We track the upstream baseline (`patches/install.sh.orig`) and merge updates via `make patch`: review the diff, then commit. When Homebrew ships security fixes, you can quickly pull them in without rewriting the patch.
 
-## Technical Background
-
 Homebrew Linux x86_64 bottles are compiled against `/home/linuxbrew/.linuxbrew` (26 bytes). When installed to any target prefix ≤26 bytes, Homebrew's ELF relocation engine truncates and null-pads `DT_RPATH` / `DT_RUNPATH` in-place without recompilation. This enables stock bottles to work in custom prefixes natively.
 
 ## Installation Options
@@ -36,9 +34,6 @@ The installer (`install.sh`) supports interactive selection or non-interactive C
 | **System-wide** | `--opt` | Ubuntu (in support window) + glibc ≥2.39 | One-time setup | Multi-user systems, macOS parity |
 | **Rootless** | `--user` | Community-tested | Never | Non-root users, HPC, containers |
 | **Legacy** | `--legacy` | Ubuntu (in support window) + glibc ≥2.39 | One-time setup | Existing Linuxbrew docs compatibility |
-| **Custom** | `--prefix=<path>` | N/A | Depends | Custom deployment paths ≤26 bytes |
-
-> `/opt/homebrew` and `/home/linuxbrew/.linuxbrew` work on Ubuntu within its standard support window (20.04 LTS and later) with glibc ≥2.39; Homebrew's CI covers these. Rootless mode (`~/.brew`) works reliably but isn't in Homebrew's test matrix.
 
 > After initial setup, running `brew` and installing packages from bottles **never requires sudo**.
 
